@@ -2,7 +2,6 @@ import functools
 from functools import lru_cache
 import socket
 import time as _time
-import json as _json
 
 from ._http import requests, new_session, is_supported_session, cookie_jar
 from urllib.parse import urlsplit, urljoin
@@ -99,6 +98,11 @@ class YfData(metaclass=SingletonMeta):
                 "Y": cookie_y
             })
             self._cookie = True
+            # Drop any cached crumb: it may have been minted under a different
+            # (e.g. anonymous, or another account's) login state. Forcing a
+            # re-mint on the next request keeps the crumb matched to these
+            # cookies, so the login takes effect cleanly mid-process.
+            self._crumb = None
 
     def _set_session(self, session):
         if session is None:
@@ -380,8 +384,8 @@ class YfData(metaclass=SingletonMeta):
         return crumb, strategy
 
     @utils.log_indent_decorator
-    def get(self, url, params=None, timeout=30):
-        response = self._make_request(url, request_method = self._session.get, params=params, timeout=timeout)
+    def get(self, url, params=None, timeout=30, allow_strategy_switch=True):
+        response = self._make_request(url, request_method = self._session.get, params=params, timeout=timeout, allow_strategy_switch=allow_strategy_switch)
 
         # Accept cookie-consent if redirected to consent page
         if not self._is_this_consent_url(response.url):
@@ -398,8 +402,15 @@ class YfData(metaclass=SingletonMeta):
         return self._make_request(url, request_method = self._session.post, body=body, params=params, timeout=timeout, data=data)
 
     @utils.log_indent_decorator
-    def _make_request(self, url, request_method, body=None, params=None, timeout=30, data=None):
+    def _make_request(self, url, request_method, body=None, params=None, timeout=30, data=None, allow_strategy_switch=True):
         # Important: treat input arguments as immutable.
+        #
+        # allow_strategy_switch: when False, a 4xx response is returned as-is
+        # instead of toggling the cookie strategy and retrying. The toggle
+        # clears the session cookies on csrf->basic, which would wipe a user's
+        # T/Y login cookies; callers probing an endpoint that legitimately
+        # returns 401/403 (e.g. Auth's login check) pass False to read the
+        # raw status without that side effect.
 
         if len(url) > 200:
             utils.get_yf_logger().debug(f'url={url[:200]}...')
@@ -444,7 +455,7 @@ class YfData(metaclass=SingletonMeta):
                 else:
                     raise
         utils.get_yf_logger().debug(f'response code={response.status_code}')
-        if response.status_code >= 400:
+        if response.status_code >= 400 and allow_strategy_switch:
             # Retry with other cookie strategy
             if strategy == 'basic':
                 self._set_cookie_strategy('csrf')
@@ -552,12 +563,22 @@ class YfData(metaclass=SingletonMeta):
         )
         return response
 
+_SUBSCRIPTIONS_URL = "https://query1.finance.yahoo.com/ws/obi-integration/v1/subscriptions"
+
+# Yahoo Finance premium tier inferred from granted feature flags. Feature names
+# are stable across Yahoo's internal tier renumbering (the raw tier integers are
+# non-contiguous: 0=free, 3..6=paid), so they're the more reliable signal.
+_GOLD_TIER_FEATURES = {"premiumScreeners", "screenersDownload", "historicalFinancials",
+                       "historicalStatistics", "workspace"}
+_SILVER_TIER_FEATURES = {"researchReports", "fairValue", "premiumNews", "stockPicks",
+                         "companyOutlook"}
+_BRONZE_TIER_FEATURES = {"portfolioAnalytics", "adLite", "unlimitedPriceAlerts"}
+
+
 class Auth:
     def __init__(self, session=None):
         self._session = session
         self._data = YfData(session)
-
-        self._user: dict | None = None
 
     def set_login_cookies(self, cookie_t: str, cookie_y: str) -> None:
         """
@@ -579,32 +600,67 @@ class Auth:
         """
         self._data.set_login_cookies(cookie_t, cookie_y)
 
-    def check_login(self) -> bool:
-        """Check whether the user is logged in to Yahoo Finance."""
-        if self._user:
-            return True
+    def _fetch_entitlement(self) -> dict | None:
+        """Fetch the account's subscription entitlement (live, not cached).
 
+        A single lightweight JSON call to the OBI subscriptions endpoint
+        determines both login state and subscription tier, avoiding any
+        consumer-web-page scraping. The result is intentionally not cached:
+        the endpoint is cheap and Yahoo does not rate-limit it at any realistic
+        volume, so a fresh call each time keeps the answer from going stale
+        (e.g. if the login session expires part-way through a long-running
+        process).
+
+        Returns:
+            dict | None: The entitlement ``result`` object when logged in, or
+            ``None`` when not logged in (anonymous sessions return HTTP 401).
+        """
         try:
-            response = self._data.get("https://finance.yahoo.com/")
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            script_tag = soup.find('script', id='nimbus-benji-config')
-            if not script_tag:
-                return False
-
-            config_json = script_tag.string
-            config_data = _json.loads(config_json).get('i13n')
-
-            if "user" in config_data and "guid" in config_data["user"]:
-                self._user = config_data["user"]
-                return True
-            else:
-                return False
+            # allow_strategy_switch=False: a 401/403 here is the expected
+            # "not logged in" answer, not a cookie-strategy failure. Letting
+            # data.py toggle strategies would clear the session cookies and
+            # could wipe the user's T/Y login cookies.
+            response = self._data.get(_SUBSCRIPTIONS_URL, allow_strategy_switch=False)
+            if response.status_code != 200:
+                return None
+            result = (response.json() or {}).get("result")
+            if isinstance(result, dict) and result.get("guid"):
+                return result
+            return None
         except Exception as e:
             if not YfConfig.debug.hide_exceptions:
                 raise
             utils.get_yf_logger().error(f"Error confirming login: {e}")
-            return False
+            return None
+
+    def check_login(self) -> bool:
+        """Check whether the user is logged in to Yahoo Finance."""
+        return self._fetch_entitlement() is not None
+
+    def subscription_tier(self) -> str | None:
+        """Return the Yahoo Finance subscription tier of the logged-in account.
+
+        Returns:
+            str | None: ``'gold'``, ``'silver'``, ``'bronze'`` or ``'free'`` when
+            logged in (``'premium'`` if subscribed but the tier can't be named),
+            or ``None`` when not logged in.
+        """
+        entitlement = self._fetch_entitlement()
+        if entitlement is None:
+            return None
+        # Derive the tier from granted feature flags rather than the raw tier
+        # integer (which Yahoo renumbers) or subscription "action" status.
+        granted = {k for k, v in (entitlement.get("premiumTierFeatures") or {}).items() if v}
+        if granted & _GOLD_TIER_FEATURES:
+            return "gold"
+        if granted & _SILVER_TIER_FEATURES:
+            return "silver"
+        if granted & _BRONZE_TIER_FEATURES:
+            return "bronze"
+        # Subscribed but no recognized feature signature -> generic premium.
+        if entitlement.get("subscriptionView"):
+            return "premium"
+        return "free"
 
     @property
     def user(self) -> dict | None:
@@ -612,9 +668,7 @@ class Auth:
         Get the logged-in user's details.
 
         Returns:
-            dict | None: A dictionary containing the user's details if logged in, or None if not logged in.
+            dict | None: ``{'guid': ...}`` if logged in, or ``None`` if not.
         """
-        if self._user is not None or self.check_login():
-            return self._user
-
-        return None
+        entitlement = self._fetch_entitlement()
+        return {"guid": entitlement["guid"]} if entitlement else None
