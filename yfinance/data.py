@@ -384,8 +384,8 @@ class YfData(metaclass=SingletonMeta):
         return crumb, strategy
 
     @utils.log_indent_decorator
-    def get(self, url, params=None, timeout=30, allow_strategy_switch=True):
-        response = self._make_request(url, request_method = self._session.get, params=params, timeout=timeout, allow_strategy_switch=allow_strategy_switch)
+    def get(self, url, params=None, timeout=30, allow_strategy_switch=True, headers=None):
+        response = self._make_request(url, request_method = self._session.get, params=params, timeout=timeout, allow_strategy_switch=allow_strategy_switch, headers=headers)
 
         # Accept cookie-consent if redirected to consent page
         if not self._is_this_consent_url(response.url):
@@ -398,11 +398,11 @@ class YfData(metaclass=SingletonMeta):
         return response
 
     @utils.log_indent_decorator
-    def post(self, url, body=None, params=None, timeout=30, data=None):
-        return self._make_request(url, request_method = self._session.post, body=body, params=params, timeout=timeout, data=data)
+    def post(self, url, body=None, params=None, timeout=30, data=None, allow_strategy_switch=True, headers=None):
+        return self._make_request(url, request_method = self._session.post, body=body, params=params, timeout=timeout, data=data, allow_strategy_switch=allow_strategy_switch, headers=headers)
 
     @utils.log_indent_decorator
-    def _make_request(self, url, request_method, body=None, params=None, timeout=30, data=None, allow_strategy_switch=True):
+    def _make_request(self, url, request_method, body=None, params=None, timeout=30, data=None, allow_strategy_switch=True, headers=None):
         # Important: treat input arguments as immutable.
         #
         # allow_strategy_switch: when False, a 4xx response is returned as-is
@@ -440,10 +440,18 @@ class YfData(metaclass=SingletonMeta):
 
         if body:
             request_args['json'] = body
-        
+
+        # Merge any caller-supplied headers (e.g. Referer/Origin required by the
+        # premium research endpoints) with the Content-Type implied by 'data'.
+        # Caller headers take precedence on key collision.
+        merged_headers = {}
         if data:
             request_args['data'] = data
-            request_args['headers'] = {"Content-Type": "application/json"}
+            merged_headers["Content-Type"] = "application/json"
+        if headers:
+            merged_headers.update(headers)
+        if merged_headers:
+            request_args['headers'] = merged_headers
 
         for attempt in range(YfConfig.network.retries + 1):
             try:

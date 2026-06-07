@@ -28,6 +28,7 @@ import pandas as _pd
 from .base import TickerBase
 from .const import _BASE_URL_
 from .scrapers.funds import FundsData
+from .scrapers.premium import Premium
 
 
 class Ticker(TickerBase):
@@ -272,6 +273,17 @@ class Ticker(TickerBase):
     @property
     def ttm_cashflow(self) -> _pd.DataFrame:
         return self.ttm_cash_flow
+
+    @property
+    def premium(self) -> Premium:
+        """Access Yahoo Finance Premium data for this ticker.
+
+        Requires a logged-in session with an active Premium subscription
+        (set cookies via ``yfinance.Auth().set_login_cookies(T, Y)``). Use
+        ``yfinance.Auth().subscription_tier()`` to confirm the account's access
+        level.
+        """
+        return self._premium
 
     @property
     def analyst_price_targets(self) -> dict:

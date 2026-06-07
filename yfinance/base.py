@@ -42,6 +42,7 @@ from .scrapers.holders import Holders
 from .scrapers.quote import Quote, FastInfo
 from .scrapers.history import PriceHistory
 from .scrapers.funds import FundsData
+from .scrapers.premium import Premium
 
 from .const import _BASE_URL_, _ROOT_URL_, _QUERY1_URL_
 
@@ -117,6 +118,7 @@ class TickerBase:
         self._holders = Holders(self._data, self.ticker)
         self._quote = Quote(self._data, self.ticker)
         self._fundamentals = Fundamentals(self._data, self.ticker)
+        self._premium = Premium(self._data, self.ticker)
         self._funds_data = None
 
         self._fast_info = None

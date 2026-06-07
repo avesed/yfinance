@@ -51,3 +51,26 @@ class YFInvalidPeriodError(YFException):
 class YFRateLimitError(YFException):
     def __init__(self):
         super().__init__("Too Many Requests. Rate limited. Try after a while.")
+
+
+class YFNotLoggedInError(YFException):
+    """Raised when a premium endpoint rejects the request because the session
+    is not logged in (typically HTTP 401).
+
+    A long-running caller can catch this to detect that the supplied login
+    cookies are missing or have expired, and re-authenticate via
+    :meth:`yfinance.Auth.set_login_cookies`.
+    """
+    def __init__(self, description="Not logged in. Set login cookies via Auth.set_login_cookies(T, Y)."):
+        super().__init__(description)
+
+
+class YFNotSubscribedError(YFException):
+    """Raised when a premium endpoint rejects the request because the logged-in
+    account lacks the required Yahoo Finance Premium subscription tier
+    (typically HTTP 402/403).
+
+    Inspect the active tier with :meth:`yfinance.Auth.subscription_tier`.
+    """
+    def __init__(self, description="Logged-in account is not subscribed to the required Yahoo Finance Premium tier."):
+        super().__init__(description)

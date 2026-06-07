@@ -123,6 +123,76 @@ fundamentals_keys = {
                   "PaymentstoSuppliersforGoodsandServices", "ClassesofCashReceiptsfromOperatingActivities",
                   "OtherCashReceiptsfromOperatingActivities", "ReceiptsfromGovernmentGrants", "ReceiptsfromCustomers"]}
 
+# ------------------------------------------------------------------------------
+# Yahoo Finance Premium endpoints.
+#
+# These require a logged-in session with an active Yahoo Finance Premium
+# subscription. The login cookies ('T' and 'Y') are supplied via
+# ``yfinance.Auth.set_login_cookies()``; the crumb returned for that session
+# unlocks the premium API. All premium requests are issued through ``YfData``
+# so the cookie + crumb handling is shared with the rest of yfinance.
+#
+# The premium fundamentals (income / balance-sheet / cash-flow) endpoint mirrors
+# the free fundamentals-timeseries endpoint, differing only by the extra
+# ``/premium/`` path segment. The premium variant returns a deeper history
+# (e.g. US back to 1985, HK to 2003, CN to 1998).
+# ------------------------------------------------------------------------------
+
+# Premium fundamentals-timeseries base (note the '/premium/' segment vs the
+# free endpoint in scrapers/fundamentals.py).
+_FUNDAMENTALS_TIMESERIES_PREMIUM_URL_ = "https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/premium/timeseries"
+
+# Premium fair-value (Value Analyzer) endpoints.
+_PREMIUM_FAIR_VALUE_URL_ = "https://query2.finance.yahoo.com/ws/value-analyzer/v1/finance/premium/valueAnalyzer/multiquote"
+
+# Premium Company 360 snapshot.
+_PREMIUM_COMPANY_360_URL_ = "https://query2.finance.yahoo.com/ws/finance-company-360/v1/finance/premium/company360"
+_PREMIUM_COMPANY_360_MODULES_ = "innovations,sustainability,insiderSentiments,significantDevelopments,supplyChain,earnings,dividend,companyOutlookSummary,hiring,companySnapshot"
+
+# Premium Technical Insights.
+_PREMIUM_INSIGHTS_URL_ = "https://query2.finance.yahoo.com/ws/insights/v2/finance/premium/insights"
+
+# Premium full technical-events feed (distinct from technical-insights above):
+# detailed short/intermediate/long-horizon technical events, support/resistance
+# and stop-loss levels. Gold-tier.
+_PREMIUM_TECHNICAL_EVENTS_URL_ = "https://query2.finance.yahoo.com/ws/market-analytics/v1/finance/premium/technicalevents"
+
+# Premium research / trade-idea listing (POST) and per-id overlay (GET) endpoints.
+# The listing is served by the premium 'visualization' endpoint (NOTE: the
+# '/premium/' path segment is what makes it answer for a logged-in subscriber;
+# the non-premium '/v1/finance/visualization' path returns 401). These three
+# endpoints require Referer/Origin research headers (see _PREMIUM_RESEARCH_HEADERS_).
+_PREMIUM_VISUALIZATION_URL_ = "https://query2.finance.yahoo.com/v1/finance/premium/visualization"
+_PREMIUM_RESEARCH_REPORTS_OVERLAY_URL_ = "https://query2.finance.yahoo.com/v1/finance/premium/researchreports/overlay"
+_PREMIUM_TRADE_IDEAS_OVERLAY_URL_ = "https://query2.finance.yahoo.com/v1/finance/premium/tradeideas/overlay"
+
+# Premium Value-Analyzer per-symbol historical drilldown (fair-value history).
+_PREMIUM_VALUE_ANALYZER_DRILLDOWN_URL_ = "https://query2.finance.yahoo.com/ws/value-analyzer/v1/finance/premium/valueAnalyzer"
+
+# Premium page-views visitor-trend feed.
+_PREMIUM_PAGE_VIEWS_URL_ = "https://query2.finance.yahoo.com/ws/finance-page-views-visitor-trend/v1/finance/premium/views"
+
+# Headers required by the research endpoints (visualization + overlays). Yahoo
+# rejects these requests without a matching Referer/Origin pointing at the
+# research consumer page.
+_PREMIUM_RESEARCH_HEADERS_ = {
+    "Referer": "https://finance.yahoo.com/research/",
+    "Origin": "https://finance.yahoo.com",
+}
+
+# Field keys for premium-only fundamentals tables (valuation measures and the
+# corporate-events feed). Income / balance-sheet / cash-flow reuse
+# ``fundamentals_keys`` above.
+fundamentals_premium_keys = {
+    'valuation': ["ForwardPeRatio", "PsRatio", "PbRatio", "EnterprisesValueEBITDARatio",
+                  "EnterprisesValueRevenueRatio", "PeRatio", "MarketCap", "EnterpriseValue", "PegRatio"],
+    'corporate-events': ["sigdev_corporate_guidance", "sigdev_performance", "sigdev_corporate_deals",
+                         "sigdev_expansion_new_markets_new_units", "sigdev_products", "sigdev_ownership_control",
+                         "sigdev_financing", "sigdev_litigation_regulatory", "sigdev_accounting_issues",
+                         "sigdev_restructuring_reorganization_related", "sigdev_reference", "sigdev_special_events",
+                         "sigdev_environment"],
+}
+
 _PRICE_COLNAMES_ = ['Open', 'High', 'Low', 'Close', 'Adj Close']
 
 quote_summary_valid_modules = (
