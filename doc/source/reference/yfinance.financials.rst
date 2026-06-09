@@ -31,3 +31,6 @@ Financials
 
    get_sec_filings
    sec_filings
+
+   get_insights
+   insights

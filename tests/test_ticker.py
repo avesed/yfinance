@@ -1333,6 +1333,48 @@ class TestTickerValuationMeasures(unittest.TestCase):
         self.assertIsInstance(data, pd.DataFrame)
         self.assertTrue(data.empty)
 
+class TestTickerInsights(unittest.TestCase):
+    session = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.session = session_gbl
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.session is not None:
+            cls.session.close()
+
+    def setUp(self):
+        self.ticker = yf.Ticker("AAPL", session=self.session)
+
+    def tearDown(self):
+        self.ticker = None
+
+    def test_insights(self):
+        data = self.ticker.insights
+        self.assertIsInstance(data, dict, "insights should be a dict")
+        self.assertIn("instrumentInfo", data, "missing instrumentInfo")
+        # The nested Trading Central fields are Yahoo-side data (sparse for
+        # low-coverage names), so only assert their shape when present.
+        inst = data.get("instrumentInfo") or {}
+        if "technicalEvents" in inst:
+            self.assertIsInstance(inst["technicalEvents"], dict)
+        if "keyTechnicals" in inst:
+            self.assertIsInstance(inst["keyTechnicals"], dict)
+
+    def test_insights_excludes_premium_and_thirdparty(self):
+        # Premium upsell teasers and third-party research bodies are scoped out.
+        data = self.ticker.insights
+        for k in ("upsell", "upsellSearchDD", "reports", "secReports"):
+            self.assertNotIn(k, data, f"{k} should be excluded from insights")
+
+    def test_insights_cached(self):
+        data = self.ticker.insights
+        data_cached = self.ticker.insights
+        self.assertIs(data, data_cached, "insights not cached")
+
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(TestTicker('Test ticker'))
@@ -1343,6 +1385,7 @@ def suite():
     suite.addTest(TestTickerInfo('Test info & fast_info'))
     suite.addTest(TestTickerFundsData('Test Funds Data'))
     suite.addTest(TestTickerValuationMeasures('Test valuation measures'))
+    suite.addTest(TestTickerInsights('Test insights'))
     return suite
 
 

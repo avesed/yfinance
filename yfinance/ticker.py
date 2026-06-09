@@ -178,6 +178,10 @@ class Ticker(TickerBase):
         return self.get_sec_filings()
 
     @property
+    def insights(self) -> dict:
+        return self.get_insights()
+
+    @property
     def recommendations(self):
         return self.get_recommendations()
 

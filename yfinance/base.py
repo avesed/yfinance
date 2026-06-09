@@ -37,6 +37,7 @@ from .config import YfConfig
 from .exceptions import YFDataException, YFEarningsDateMissing, YFRateLimitError
 from .live import WebSocket
 from .scrapers.analysis import Analysis
+from .scrapers.insights import Insights
 from .scrapers.fundamentals import Fundamentals
 from .scrapers.holders import Holders
 from .scrapers.quote import Quote, FastInfo
@@ -117,6 +118,7 @@ class TickerBase:
         self._holders = Holders(self._data, self.ticker)
         self._quote = Quote(self._data, self.ticker)
         self._fundamentals = Fundamentals(self._data, self.ticker)
+        self._insights = Insights(self._data, self.ticker)
         self._funds_data = None
 
         self._fast_info = None
@@ -236,6 +238,9 @@ class TickerBase:
 
     def get_sec_filings(self) -> dict:
         return self._quote.sec_filings
+
+    def get_insights(self) -> dict:
+        return self._insights.insights
 
     def get_major_holders(self, as_dict=False):
         data = self._holders.major
